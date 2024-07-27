@@ -2,39 +2,47 @@
 
 NOTIFICATION_FILE="notification.txt"
 
-# Memeriksa Layanan yang Dibutuhkan
-if command -v mysql &> /dev/null && command -v nginx &> /dev/null && command -v named &> /dev/null; then
-        echo "MySQL, nginx, dan bind9 sudah terinstal"
-else
-        echo "Beberapa layanan belum terinstal. Menginstal layanan yang dibutuhkan..."
-        sudo apt-get update
-        sudo apt-get install -y mysql-server nginx bind9
-        sudo systemctl start mysql
-        sudo systemctl enable mysql
-        sudo systemctl start nginx
-        sudo systemctl enable nginx
-        sudo systemctl start bind9
-        sudo systemctl enable bind9
-fi
+# Function to check and install required services
+check_and_install_services() {
+    local services=("mysql-server" "nginx" "bind9")
+    local service_names=("mysql" "nginx" "named")
+    local missing_services=()
 
-# Fungsi untuk membaca kredensial dari file
-read_credentials() {
-    while IFS= read -r line; do
-        if [[ $line == GitHub\ Link:* ]]; then
-            GITHUB_LINK="${line#GitHub Link: }"
-        elif [[ $line == Database\ User:* ]]; then
-            DB_USER="${line#Database User: }"
-        elif [[ $line == User\ Password:* ]]; then
-            USER_PASS="${line#User Password: }"
-        elif [[ $line == Database\ Name:* ]]; then
-            DB_NAME="${line#Database Name: }"
-        elif [[ $line == Domain:* ]]; then
-            DOMAIN="${line#Domain: }"
+    for ((i=0; i<${#services[@]}; i++)); do
+        if ! command -v ${service_names[i]} &> /dev/null; then
+            missing_services+=(${services[i]})
         fi
-    done < credentials.txt
+    done
+
+    if [ ${#missing_services[@]} -eq 0 ]; then
+        echo "All required services are already installed"
+    else
+        echo "Installing missing services: ${missing_services[@]}"
+        sudo apt-get update
+        sudo apt-get install -y "${missing_services[@]}"
+
+        sudo systemctl start mysql nginx bind9
+        sudo systemctl enable mysql nginx bind9
+    fi
 }
 
-# Fungsi untuk menginstal dan mengonfigurasi MySQL
+# Function to read credentials from file
+read_credentials() {
+    declare -A credentials
+    while IFS= read -r line; do
+        key="${line%%:*}"
+        value="${line#*: }"
+        credentials[$key]="$value"
+    done < credentials.txt
+
+    GITHUB_LINK="${credentials['GitHub Link']}"
+    DB_USER="${credentials['Database User']}"
+    USER_PASS="${credentials['User Password']}"
+    DB_NAME="${credentials['Database Name']}"
+    DOMAIN="${credentials['Domain']}"
+}
+
+# Function to setup MySQL
 setup_mysql() {
     echo "Creating MySQL database and user..."
     sudo mysql -e "CREATE DATABASE IF NOT EXISTS ${DB_NAME};"
@@ -43,16 +51,13 @@ setup_mysql() {
     sudo mysql -e "FLUSH PRIVILEGES;"
 }
 
-# Fungsi untuk mengonfigurasi DNS dengan bind9
+# Function to configure DNS with bind9
 setup_bind9() {
     echo "Configuring DNS with bind9..."
-
-    # Konfigurasi file zona
-    ZONE_FILE="/etc/bind/zones/db.${DOMAIN}"
+    local zone_file="/etc/bind/zones/db.${DOMAIN}"
     sudo mkdir -p /etc/bind/zones
 
-    # Buat konfigurasi zona
-    sudo tee $ZONE_FILE > /dev/null <<EOF
+    sudo tee $zone_file > /dev/null <<EOF
 \$TTL    604800
 @       IN      SOA     ns1.${DOMAIN}. admin.${DOMAIN}. (
                               2         ; Serial
@@ -67,30 +72,27 @@ setup_bind9() {
 ns1     IN      A       127.0.0.1
 EOF
 
-    # Tambahkan zona ke konfigurasi named.conf.local jika belum ada
     if ! grep -q "zone \"${DOMAIN}\"" /etc/bind/named.conf.local; then
-        sudo bash -c "cat >> /etc/bind/named.conf.local <<EOF
+        sudo tee -a /etc/bind/named.conf.local > /dev/null <<EOF
 
-zone \"${DOMAIN}\" {
+zone "${DOMAIN}" {
     type master;
-    file \"/etc/bind/zones/db.${DOMAIN}\";
+    file "/etc/bind/zones/db.${DOMAIN}";
 };
-EOF"
+EOF
     else
         echo "Zone ${DOMAIN} already exists in named.conf.local"
     fi
 
-    # Restart bind9
     sudo systemctl restart bind9
 }
 
-# Fungsi untuk menginstal dan mengonfigurasi Nginx
+# Function to setup Nginx
 setup_nginx() {
     echo "Configuring Nginx reverse proxy..."
-    REVPROX_FILE="/etc/nginx/sites-available/${DOMAIN}"
+    local revprox_file="/etc/nginx/sites-available/${DOMAIN}"
 
-    # Buat konfigurasi Nginx
-    sudo tee $REVPROX_FILE > /dev/null <<EOF
+    sudo tee $revprox_file > /dev/null <<EOF
 server {
     listen 80;
     server_name ${DOMAIN};
@@ -105,19 +107,19 @@ server {
 }
 EOF
 
-    # Aktifkan konfigurasi
-    sudo ln -s $REVPROX_FILE /etc/nginx/sites-enabled/
+    sudo ln -sf $revprox_file /etc/nginx/sites-enabled/
     sudo nginx -t
     sudo systemctl restart nginx
 }
 
+# Function to setup Flask application
 setup_flask_app() {
     echo "Cloning GitHub repository..."
+    local repo_name
+    repo_name=$(basename -s .git "$GITHUB_LINK")
 
-    REPO_NAME=$(basename -s .git "$GITHUB_LINK")
-
-    git clone ${GITHUB_LINK} "$REPO_NAME"
-    cd "$REPO_NAME" || exit
+    git clone ${GITHUB_LINK} "$repo_name"
+    cd "$repo_name" || exit
 
     echo "Installing dependencies..."
     python3 -m venv venv
@@ -130,7 +132,7 @@ setup_flask_app() {
     cd ..
 }
 
-# Fungsi untuk menulis pesan notifikasi ke file setelah memeriksa aksesibilitas web
+# Function to write notification after checking web accessibility
 write_notification() {
     local retry_count=5
     local wait_time=5
@@ -151,15 +153,18 @@ write_notification() {
     return 1
 }
 
-# Main script
+# Main script execution
+check_and_install_services
 read_credentials
 setup_mysql
 setup_bind9
 setup_nginx
 setup_flask_app
+
 if write_notification; then
-        echo "Setup complete! Notification written to $NOTIFICATION_FILE."
-    else
-        echo "Setup complete, but web is not accessible. Notification written to $NOTIFICATION_FILE."
+    echo "Setup complete! Notification written to $NOTIFICATION_FILE."
+else
+    echo "Setup complete, but web is not accessible. Notification written to $NOTIFICATION_FILE."
 fi
+
 echo "Setup complete!"
