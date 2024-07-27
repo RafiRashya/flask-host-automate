@@ -17,6 +17,12 @@ Follow these steps to set up and use the project.
 
 ### 1. Run the Monitor and Setup Script
 
+Install `inotify-tools` with apt package:
+
+```bash
+sudo apt-get install -y inotify-tools
+```
+
 Navigate back to the root directory of the project and run the `monitor.sh` script. This script will read the credentials from `credentials.txt`, install necessary services, and configure the environment.
 
 ```bash
