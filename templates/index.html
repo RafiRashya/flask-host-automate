@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Input Credentials</title>
+    <script>
+      function fetchNotification() {
+          fetch('/notification')
+              .then(response => response.json())
+              .then(data => {
+                  document.getElementById('notification').innerText = data.message;
+              });
+      }
+
+      window.onload = fetchNotification;
+    </script>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Enter Your Credentials</h1>
+      <form method="post">
+        <div>
+          <label for="github_link">GitHub Repository Link:</label>
+          <input type="url" id="github_link" name="github_link" required>
+        </div>
+        <div>
+          <label for="db_user">Database User:</label>
+          <input type="text" id="db_user" name="db_user" required>
+        </div>
+        <div>
+            <label for="db_user">User Password:</label>
+            <input type="text" id="user_pass" name="user_pass" required>
+          </div>
+        <div>
+          <label for="db_name">Database Name:</label>
+          <input type="text" id="db_name" name="db_name" required>
+        </div>
+        <div>
+          <label for="domain">Domain:</label>
+          <input type="text" id="domain" name="domain" required>
+        </div>
+        <div>
+          <button type="submit">Submit</button>
+        </div>
+      </form>
+      <div id="notification" style="margin-top: 20px; color: green; font-weight: bold;"></div>
+    </div>
+  </body>
+</html>
