@@ -54,6 +54,13 @@ setup_mysql() {
 # Function to configure DNS with bind9
 setup_bind9() {
     echo "Configuring DNS with bind9..."
+
+    # Check if the domain already exists in named.conf.local
+    if grep -q "zone \"${DOMAIN}\"" /etc/bind/named.conf.local; then
+        echo "Zone ${DOMAIN} already exists, choose another domain name" > $NOTIFICATION_FILE
+        exit 1
+    fi
+
     local zone_file="/etc/bind/zones/db.${DOMAIN}"
     sudo mkdir -p /etc/bind/zones
 
@@ -72,17 +79,13 @@ setup_bind9() {
 ns1     IN      A       127.0.0.1
 EOF
 
-    if ! grep -q "zone \"${DOMAIN}\"" /etc/bind/named.conf.local; then
-        sudo tee -a /etc/bind/named.conf.local > /dev/null <<EOF
+    sudo tee -a /etc/bind/named.conf.local > /dev/null <<EOF
 
 zone "${DOMAIN}" {
     type master;
     file "/etc/bind/zones/db.${DOMAIN}";
 };
 EOF
-    else
-        echo "Zone ${DOMAIN} already exists in named.conf.local"
-    fi
 
     sudo systemctl restart bind9
 }
@@ -149,15 +152,15 @@ write_notification() {
         fi
     done
 
-    echo "Failed to access web at http://${DOMAIN} after $retry_count attempts." > $NOTIFICATION_FILE
+    echo "Error: Failed to access web at http://${DOMAIN}" > $NOTIFICATION_FILE
     return 1
 }
 
 # Main script execution
 check_and_install_services
 read_credentials
-setup_mysql
 setup_bind9
+setup_mysql
 setup_nginx
 setup_flask_app
 
