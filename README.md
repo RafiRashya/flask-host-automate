@@ -23,7 +23,7 @@ Install `inotify-tools` with apt package:
 sudo apt-get install -y inotify-tools
 ```
 
-Navigate back to the root directory of the project and run the `monitor.sh` script. This script will read the credentials from `credentials.txt`, install necessary services, and configure the environment.
+Run the `monitor.sh` script, This script will read the credentials from `credentials.txt`, install necessary services, and configure the environment.
 
 ```bash
 chmod +x monitor.sh
